@@ -106,8 +106,74 @@ footer {
   background: rgba(29, 155, 240, 0.08);
 }
 
+.search-box {
+  padding: 0 20px 12px;
+}
+
+.search-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #b8c5d0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.search-row {
+  display: flex;
+  gap: 5px;
+}
+
+.search-row input {
+  min-width: 0;
+  flex: 1;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 9px;
+  outline: none;
+  color: #f5f7fa;
+  background: rgba(255, 255, 255, 0.06);
+  font: inherit;
+  font-size: 12px;
+  padding: 0 9px;
+}
+
+.search-row input:focus {
+  border-color: rgba(29, 155, 240, 0.75);
+  box-shadow: 0 0 0 2px rgba(29, 155, 240, 0.15);
+}
+
+.search-row input::placeholder {
+  color: #71808e;
+}
+
+.search-button {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  color: #d9e3eb;
+  background: #29323a;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.search-button-primary {
+  color: #fff;
+  background: #1d9bf0;
+}
+
+.search-hint {
+  margin-top: 5px;
+  color: #71808e;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 0 20px 12px;
 }
@@ -139,6 +205,11 @@ button {
 .secondary-button {
   color: #f5f7fa;
   background: #29323a;
+}
+
+.actions .primary-button,
+.actions .secondary-button {
+  min-width: 0;
 }
 
 .status {

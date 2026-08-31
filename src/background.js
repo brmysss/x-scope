@@ -18,6 +18,15 @@ chrome.action.onClicked.addListener(async (tab) => {
     // Tabs that were already open when the extension was installed may not have
     // received the declarative content script yet. Inject it on demand so the
     // toolbar button always has a useful first action.
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: "MAIN",
+        files: ["src/network-main.js"],
+      })
+    } catch (error) {
+      console.warn("XScope could not inject the network bridge", error)
+    }
     await chrome.scripting.insertCSS({
       target: { tabId: tab.id },
       files: ["src/styles.css"],

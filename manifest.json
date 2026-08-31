@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "XScope — X 工具箱",
-  "version": "0.1.1",
-  "description": "本地优先的 X 工具箱：扫描用户主页并按互动数据查看热门推文。",
+  "version": "0.2.0",
+  "description": "本地优先的 X 工具箱：GraphQL 分页、X 搜索补漏与热门推文排行。",
   "permissions": ["storage", "scripting"],
   "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
   "action": {
@@ -18,6 +18,12 @@
     }
   ],
   "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["src/network-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
       "css": ["src/styles.css"],

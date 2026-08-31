@@ -82,6 +82,53 @@
     }
   }
 
+  function parseSearchContext(pathname, search) {
+    const segments = String(pathname || "")
+      .split("/")
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+
+    if (segments.length !== 1 || segments[0].toLowerCase() !== "search") return null
+
+    const query = new URLSearchParams(search || "").get("q") || ""
+    const match = query.match(/(?:^|\s)from:([a-zA-Z0-9_]{1,20})(?=\s|$)/i)
+    if (!match) return null
+
+    return {
+      handle: match[1],
+      query,
+    }
+  }
+
+  function extractSearchText(query) {
+    return String(query || "")
+      .replace(/(?:^|\s)from:[^\s]+/gi, " ")
+      .replace(/(?:^|\s)(?:since|until|lang|min_faves|min_replies|min_retweets):[^\s]+/gi, " ")
+      .replace(/(?:^|\s)-is:[^\s]+/gi, " ")
+      .replace(/\bOR\b/gi, " ")
+      .replace(/[()"]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
+  function buildXSearchQuery(handle, input) {
+    const normalizedHandle = String(handle || "").replace(/^@/, "").trim()
+    const withoutFrom = String(input || "")
+      .replace(/(?:^|\s)from:[a-zA-Z0-9_]{1,20}/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+
+    return withoutFrom ? `from:${normalizedHandle} ${withoutFrom}` : `from:${normalizedHandle}`
+  }
+
+  function buildXSearchUrl(handle, input) {
+    const url = new URL("https://x.com/search")
+    url.searchParams.set("q", buildXSearchQuery(handle, input))
+    url.searchParams.set("src", "typed_query")
+    url.searchParams.set("f", "live")
+    return url.href
+  }
+
   function textOf(element) {
     return (element?.innerText || element?.textContent || "").replace(/\s+/g, " ").trim()
   }
@@ -134,6 +181,98 @@
     }
   }
 
+  function unwrapGraphqlTweet(value) {
+    if (!value || typeof value !== "object") return null
+
+    let result = value
+    if (result.__typename === "TweetWithVisibilityResults") result = result.tweet
+    if (result?.tweet && !result.rest_id) result = result.tweet
+    if (!result || typeof result !== "object" || !result.rest_id) return null
+    return result
+  }
+
+  function extractGraphqlTweet(value, fallbackHandle) {
+    const tweet = unwrapGraphqlTweet(value)
+    if (!tweet) return null
+
+    const legacy = tweet.legacy || {}
+    const user = tweet.core?.user_results?.result || {}
+    const userLegacy = user.legacy || {}
+    const handle = userLegacy.screen_name || user.core?.screen_name || fallbackHandle || "unknown"
+    const id = String(tweet.rest_id)
+    const media = legacy.extended_entities?.media || legacy.entities?.media || []
+
+    return {
+      id,
+      url: `https://x.com/${handle}/status/${id}`,
+      text: tweet.note_tweet?.note_tweet_results?.result?.text || legacy.full_text || "",
+      author: `@${handle}`,
+      createdAt: legacy.created_at || tweet.created_at || null,
+      likes: Number(legacy.favorite_count) || 0,
+      replies: Number(legacy.reply_count) || 0,
+      reposts: Number(legacy.retweet_count) || 0,
+      quotes: Number(legacy.quote_count) || 0,
+      views: Number(tweet.views?.count) || 0,
+      isRetweet: Boolean(legacy.retweeted_status_result || /^RT @/i.test(legacy.full_text || "")),
+      isReply: Boolean(legacy.in_reply_to_status_id_str || legacy.in_reply_to_user_id_str),
+      hasMedia: Array.isArray(media) && media.length > 0,
+      capturedAt: new Date().toISOString(),
+      source: "graphql",
+    }
+  }
+
+  function graphqlInstructionSets(value) {
+    const root = value?.data && typeof value.data === "object" ? value.data : value
+    return [
+      root?.user?.result?.timeline_v2?.timeline?.instructions,
+      root?.user?.result?.timeline?.timeline?.instructions,
+      root?.search_by_raw_query?.search_timeline?.timeline?.instructions,
+      root?.searchTimeline?.timeline?.instructions,
+      root?.search?.search_timeline?.timeline?.instructions,
+    ].filter(Array.isArray)
+  }
+
+  function parseGraphqlTimeline(value, profileHandle = null) {
+    const tweets = []
+    const seen = new Set()
+    let nextCursor = null
+    const normalizedHandle = String(profileHandle || "").replace(/^@/, "").toLowerCase()
+
+    function visit(node) {
+      if (!node || typeof node !== "object") return
+
+      if (node.type === "TimelinePinEntry") return
+
+      if (node.entryId?.startsWith("cursor-bottom-") && node.content?.value) {
+        nextCursor = node.content.value
+      }
+      if (node.cursorType === "Bottom" && node.value) nextCursor = node.value
+
+      const result = node.tweet_results?.result
+      if (result) {
+        const tweet = extractGraphqlTweet(result, profileHandle)
+        const authorHandle = tweet?.author?.replace(/^@/, "").toLowerCase()
+        const belongsToProfile = !normalizedHandle || !authorHandle || authorHandle === normalizedHandle
+        if (tweet && belongsToProfile && !seen.has(tweet.id)) {
+          seen.add(tweet.id)
+          tweets.push(tweet)
+        }
+      }
+
+      if (Array.isArray(node)) {
+        node.forEach(visit)
+        return
+      }
+
+      Object.values(node).forEach((child) => {
+        if (child && typeof child === "object") visit(child)
+      })
+    }
+
+    graphqlInstructionSets(value).forEach((instructions) => instructions.forEach(visit))
+    return { tweets, nextCursor }
+  }
+
   function mergeTweets(existing, incoming) {
     const byId = new Map()
     for (const tweet of [...(existing || []), ...(incoming || [])]) {
@@ -163,13 +302,38 @@
       .slice(0, limit)
   }
 
+  function searchTweets(tweets, query, sortKey = "likes", limit = 10, originalOnly = false) {
+    const groups = String(query || "")
+      .toLocaleLowerCase()
+      .replace(/[()"]+/g, " ")
+      .split(/\s+or\s+/i)
+      .map((group) => group.split(/\s+/).filter(Boolean))
+      .filter((group) => group.length > 0)
+
+    if (!groups.length) return getTopTweets(tweets, sortKey, limit, originalOnly)
+
+    const matches = (tweets || []).filter((tweet) => {
+      const haystack = `${tweet.text || ""} ${tweet.author || ""}`.toLocaleLowerCase()
+      return groups.some((group) => group.every((term) => haystack.includes(term)))
+    })
+
+    return getTopTweets(matches, sortKey, limit, originalOnly)
+  }
+
   const api = {
     formatMetric,
+    buildXSearchQuery,
+    buildXSearchUrl,
+    extractGraphqlTweet,
+    extractSearchText,
     getTopTweets,
     mergeTweets,
     parseMetric,
     parseProfileFromPath,
+    parseSearchContext,
+    parseGraphqlTimeline,
     parseTweetArticle,
+    searchTweets,
     extractStatusId,
   }
 

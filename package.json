@@ -1,11 +1,11 @@
 {
   "name": "xscope",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "A local-first X/Twitter browser extension toolbox.",
   "license": "MIT",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/core.js && node --check src/content-script.js && node --check src/background.js"
+    "check": "node --check src/core.js && node --check src/content-script.js && node --check src/background.js && node --check src/network-main.js"
   }
 }

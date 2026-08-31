@@ -43,6 +43,7 @@ test("toolbar click injects the content script when the receiver is missing", as
 
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
     ["sendMessage", 42, { type: "toggle-panel" }],
+    ["executeScript", { target: { tabId: 42 }, world: "MAIN", files: ["src/network-main.js"] }],
     ["insertCSS", { target: { tabId: 42 }, files: ["src/styles.css"] }],
     ["executeScript", { target: { tabId: 42 }, files: ["src/core.js", "src/content-script.js"] }],
     ["sendMessage", 42, { type: "toggle-panel" }],
