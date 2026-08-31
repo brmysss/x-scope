@@ -63,7 +63,7 @@
 
       <div class="coverage" data-role="coverage">尚未扫描；这里不会承诺覆盖全部历史。</div>
       <ol class="tweet-list" data-role="list"></ol>
-      <footer>v0.1 · 扫描上限 1,000 条 · XScope</footer>
+    <footer>v0.1.1 · 扫描上限 1,000 条 · XScope</footer>
     </section>
   `
   document.documentElement.appendChild(root)
@@ -139,6 +139,24 @@
     elements.status.textContent = message
   }
 
+  function errorMessage(error) {
+    if (error instanceof Error && error.message) return error.message
+    return "未知错误"
+  }
+
+  function resetScanControls() {
+    state.isScanning = false
+    state.stopRequested = false
+    elements.scan.classList.remove("is-hidden")
+    elements.stop.classList.add("is-hidden")
+  }
+
+  function handleScanError(error) {
+    resetScanControls()
+    render()
+    setStatus(`扫描失败：${errorMessage(error)}。请刷新 X 页面后重试。`)
+  }
+
   function updateContext() {
     const profile = core.parseProfileFromPath(location.pathname)
     if (!profile) {
@@ -157,6 +175,10 @@
         state.profileData = data
         render()
         setStatus(data.tweets.length ? "已载入本地缓存，可继续扫描。" : "尚未扫描这个用户。")
+      }).catch((error) => {
+        if (state.handle !== profile.handle) return
+        render()
+        setStatus(`本地缓存读取失败：${errorMessage(error)}。仍可尝试重新扫描。`)
       })
     }
 
@@ -263,14 +285,18 @@
       }
     } finally {
       state.profileData.scannedAt = new Date().toISOString()
-      await saveProfile(profile.handle, state.profileData)
+      let saveError = null
+      try {
+        await saveProfile(profile.handle, state.profileData)
+      } catch (error) {
+        saveError = error
+      }
       window.scrollTo(0, originalScrollY)
-      state.isScanning = false
-      state.stopRequested = false
-      elements.scan.classList.remove("is-hidden")
-      elements.stop.classList.add("is-hidden")
+      resetScanControls()
       render()
-      if (!elements.status.textContent.startsWith("已达到") && !elements.status.textContent.startsWith("页面暂时")) {
+      if (saveError) {
+        setStatus(`扫描完成，但本地缓存保存失败：${errorMessage(saveError)}。`)
+      } else if (!elements.status.textContent.startsWith("已达到") && !elements.status.textContent.startsWith("页面暂时")) {
         setStatus(`扫描完成：本地收集 ${state.profileData.tweets.length} 条。`)
       }
     }
@@ -288,7 +314,7 @@
 
     if (target.dataset.action === "open") togglePanel(true)
     if (target.dataset.action === "hide") togglePanel(false)
-    if (target.dataset.action === "scan") void scanCurrentProfile()
+    if (target.dataset.action === "scan") void scanCurrentProfile().catch(handleScanError)
     if (target.dataset.action === "stop") state.stopRequested = true
     if (target.dataset.sort) {
       state.sortKey = target.dataset.sort

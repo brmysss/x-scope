@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "XScope — X 工具箱",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "本地优先的 X 工具箱：扫描用户主页并按互动数据查看热门推文。",
-  "permissions": ["storage"],
+  "permissions": ["storage", "scripting"],
   "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
   "action": {
     "default_title": "打开 XScope"
